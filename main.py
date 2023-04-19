@@ -9,20 +9,23 @@ import random
 
 from tensorflow import keras
 from tensorflow.keras import layers
+from typing import Union
 
 from read_functions import load_data
 from losses import BinaryDualFocalLoss, dice_coef, jaccard_coef
+from utils import constrain
 
 
 class NasMedSeg:
     _BATCH_SIZE: int
+    _REDUCED_BATCH_SIZE: int
     _EPOCHS: int
     _OPTIMIZER: str
 
-    _train_ds: None | tf.data.Dataset
-    _validation_ds: None | tf.data.Dataset
-    _train_ds_reduced: None | tf.data.Dataset
-    _validation_ds_reduced: None | tf.data.Dataset
+    _train_ds: Union[None, tf.data.Dataset]
+    _validation_ds: Union[None, tf.data.Dataset]
+    _train_ds_reduced: Union[None, tf.data.Dataset]
+    _validation_ds_reduced: Union[None, tf.data.Dataset]
 
     _operations = operations = [
         [1, 3, "relu"],
@@ -51,8 +54,9 @@ class NasMedSeg:
         5: [[0], [1], [2], [3], [4], [1,2], [1,3], [1,4], [2,3], [2,4], [3,4], [1,2,3], [2,3,4], [3,4,1], [4,1,2], [1,2,3,4]]
     }
 
-    def __init__(self, batch_size: int = 64, epochs: int = 15, optimizer: str = 'adam'):
+    def __init__(self, batch_size: int = 20, reduced_batch_size: int = 16, epochs: int = 15, optimizer: str = 'adam'):
         self._BATCH_SIZE = batch_size
+        self._REDUCED_BATCH_SIZE = reduced_batch_size
         self._EPOCHS = epochs
         self._OPTIMIZER = optimizer
 
@@ -79,21 +83,12 @@ class NasMedSeg:
 
         return population.astype(int)
 
-    def __constrain(self, min_v: int, max_v: int, value: int) -> int:
-        if value < min_v:
-            return min_v
-
-        elif value > max_v:
-            return max_v
-
-        return value
-
     def __update_fly(self, new_population: np.ndarray, population: np.ndarray, fly_idx: int, best_neighbour_i: int, best_fly_i: int):
         """It updates fly"""
 
         for i in range(7):
             # Firstly update first position from the column - it indicates the operation used in every node
-            new_population[fly_idx, i, 0] = self.__constrain(
+            new_population[fly_idx, i, 0] = constrain(
                 min_v=0,
                 max_v=len(self._operations) - 1,
                 value=np.round(population[best_neighbour_i, i, 0] + np.random.uniform() * (
@@ -102,7 +97,7 @@ class NasMedSeg:
 
             # Then update 5 positions representing blocks of the architecture
             for j in range(1, 6):
-                new_population[fly_idx, i, j] = self.__constrain(
+                new_population[fly_idx, i, j] = constrain(
                     min_v=0,
                     max_v=len(self._connections[j]) - 1,
                     value=np.round(population[best_neighbour_i, i, j] + np.random.uniform() * (
@@ -252,12 +247,7 @@ class NasMedSeg:
         outputs = tf.keras.layers.Conv2D(1, (1, 1), activation='sigmoid')(blocks[-1][0])
         return outputs
 
-    def __cost_function(
-        self,
-        input_shape: tuple,
-        train: tf.data.Dataset,
-        val: tf.data.Dataset,
-        fly: np.ndarray) -> float:
+    def __cost_function(self, input_shape: tuple, train: tf.data.Dataset, val: tf.data.Dataset, fly: np.ndarray) -> float:
         """It maps the fly to the architecture and the creates and trains model based on that architecture"""
         inputs = tf.keras.layers.Input(input_shape)
 
@@ -276,14 +266,7 @@ class NasMedSeg:
         # Evaluate the model using Dice coefficient. Use Dice Coefficient as a cost function
         return model.get_metrics_result()['dice_coef'].numpy()
 
-    def __dfo(
-            self,
-            input_shape: tuple,
-            train: tf.data.Dataset,
-            val: tf.data.Dataset,
-            pop_size: int=10,
-            iter_num: int=20,
-            delta: int=0.001) -> np.ndarray:
+    def __dfo(self, input_shape: tuple, train: tf.data.Dataset, val: tf.data.Dataset, pop_size: int = 10, iter_num: int = 20, delta: int = 0.001) -> np.ndarray:
         """It uses the Dispersive Flies Optimization algorithm to find the best architecture"""
         # Initialise population
         population = self.__initialise_population(pop_size)
@@ -338,13 +321,14 @@ class NasMedSeg:
 
         return population[best_fly_i]
 
-    def load(self, dataset_path: str, extension: str, depth: int, batch_size: int) -> None:
+    def load(self, dataset_path: str, extension: str, depth: int) -> None:
         """It loads the data to the NAS object. Note that is usually take some time"""
         (train_ds, validation_ds), (train_ds_reduced, validation_ds_reduced) = load_data(
             dataset_path,
             extension,
             depth,
-            batch_size
+            self._BATCH_SIZE,
+            self._REDUCED_BATCH_SIZE
         )
 
         self._train_ds = train_ds

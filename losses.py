@@ -39,7 +39,7 @@ def dice_loss(y_true, y_pred):
     return 1 - dice_coef(y_true, y_pred)
 
 
-def binary_dual_focal_loss(y_true, y_pred, alpha=1, beta=1, gamma=1, phi=1):
+def binary_dual_focal_loss(y_true, y_pred, alpha=0.55, beta=3, gamma=2, phi=1):
     """
     This is an implementation of Dual Focal Loss function for binary classes. It was proposed by Hossain et al. 2021
     link to the paper: https://www.sciencedirect.com/science/article/abs/pii/S0925231221011310
