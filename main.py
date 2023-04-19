@@ -300,7 +300,7 @@ class NasMedSeg:
         )
 
         # Evaluate the model using Dice coefficient. Use Dice Coefficient as a cost function
-        return model.get_metrics_result()['dice_coef_val'].numpy()
+        return model.get_metrics_result()['dice_coef'].numpy()
 
     def __dfo(self, pop_size: int = 10, iter_num: int = 20, delta: float = 0.001) -> np.ndarray:
         """It uses the Dispersive Flies Optimization algorithm to find the best architecture"""
@@ -376,7 +376,7 @@ class NasMedSeg:
                 batch_size=self._BATCH_SIZE
             )
 
-            dice_coef_val = model.get_metrics_result()['dice_coef_val'].numpy()
+            dice_coef_val = model.get_metrics_result()['dice_coef'].numpy()
             if dice_coef_val > best_score:
                 best_technique = augmentation_technique
 
