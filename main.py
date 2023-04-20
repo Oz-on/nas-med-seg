@@ -60,6 +60,7 @@ class NasMedSeg:
     }
 
     _augmentation_techniques = [
+        None,  # None represents no augmentation technique - original dataset
         tf.keras.layers.RandomFlip("horizontal"),
         tf.keras.layers.RandomFlip("vertical"),
         tf.keras.layers.RandomRotation(0.25),
@@ -357,7 +358,10 @@ class NasMedSeg:
         best_technique = None
 
         for augmentation_technique in self._augmentation_techniques:
-            augmented_inputs = augmentation_technique(self._inputs)
+            if augmentation_technique is None:
+                augmented_inputs = self._inputs
+            else:
+                augmented_inputs = augmentation_technique(self._inputs)
 
             architecture = self.__map_fly_to_architecture(best_fly, augmented_inputs)
 
