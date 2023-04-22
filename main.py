@@ -17,19 +17,19 @@ from utils import constrain
 
 
 class NasMedSeg:
-    _BATCH_SIZE: int
-    _REDUCED_BATCH_SIZE: int
-    _EPOCHS: int
-    _OPTIMIZER: str
+    _batch_size: int
+    _reduced_batch_size: int
+    _epochs: int
+    _optimizer: str
 
-    _inputs: tf.keras.Input
+    _input_shape: tuple
 
     _train_ds: Union[None, tf.data.Dataset]
     _validation_ds: Union[None, tf.data.Dataset]
     _train_ds_reduced: Union[None, tf.data.Dataset]
     _validation_ds_reduced: Union[None, tf.data.Dataset]
 
-    _operations = operations = [
+    _OPERATIONS = operations = [
         [1, 3, "relu"],
         [1, 3, "mish"],
         [1, 3, "IN", "relu"],
@@ -48,7 +48,7 @@ class NasMedSeg:
         [0, 5, "IN", "mish"],
     ]
 
-    _connections = {
+    _CONNECTIONS = {
         1: [[0]],
         2: [[0], [1]],
         3: [[0], [1], [2], [1, 2]],
@@ -59,7 +59,7 @@ class NasMedSeg:
         ]
     }
 
-    _augmentation_techniques = [
+    _AUGMENTATION_TECHNIQUES = [
         None,  # None represents no augmentation technique - original dataset
         tf.keras.layers.RandomFlip("horizontal"),
         tf.keras.layers.RandomFlip("vertical"),
@@ -74,12 +74,12 @@ class NasMedSeg:
                  epochs: int = 25,
                  optimizer: str = 'adam'):
 
-        self._inputs = tf.keras.Input(input_shape)
+        self._input_shape = input_shape
 
-        self._BATCH_SIZE = batch_size
-        self._REDUCED_BATCH_SIZE = reduced_batch_size
-        self._EPOCHS = epochs
-        self._OPTIMIZER = optimizer
+        self._batch_size = batch_size
+        self._reduced_batch_size = reduced_batch_size
+        self._epochs = epochs
+        self._optimizer = optimizer
 
         self._train_ds = None
         self._validation_ds = None
@@ -88,12 +88,12 @@ class NasMedSeg:
 
     def __initialise_fly(self, population: np.ndarray, fly_idx: int) -> None:
         for i in range(7):
-            population[fly_idx, i, 0] = random.randint(0, len(self._operations) - 1)
-            population[fly_idx, i, 1] = random.randint(0, len(self._connections[1]) - 1)
-            population[fly_idx, i, 2] = random.randint(0, len(self._connections[2]) - 1)
-            population[fly_idx, i, 3] = random.randint(0, len(self._connections[3]) - 1)
-            population[fly_idx, i, 4] = random.randint(0, len(self._connections[4]) - 1)
-            population[fly_idx, i, 5] = random.randint(0, len(self._connections[5]) - 1)
+            population[fly_idx, i, 0] = random.randint(0, len(self._OPERATIONS) - 1)
+            population[fly_idx, i, 1] = random.randint(0, len(self._CONNECTIONS[1]) - 1)
+            population[fly_idx, i, 2] = random.randint(0, len(self._CONNECTIONS[2]) - 1)
+            population[fly_idx, i, 3] = random.randint(0, len(self._CONNECTIONS[3]) - 1)
+            population[fly_idx, i, 4] = random.randint(0, len(self._CONNECTIONS[4]) - 1)
+            population[fly_idx, i, 5] = random.randint(0, len(self._CONNECTIONS[5]) - 1)
 
     def __initialise_population(self, pop_size: int) -> np.ndarray:
         """It generates population of specified size"""
@@ -116,7 +116,7 @@ class NasMedSeg:
             # Firstly update first position from the column - it indicates the operation used in every node
             new_population[fly_idx, i, 0] = constrain(
                 min_v=0,
-                max_v=len(self._operations) - 1,
+                max_v=len(self._OPERATIONS) - 1,
                 value=np.round(population[best_neighbour_i, i, 0] + np.random.uniform() * (
                             population[best_fly_i, i, 0] - population[fly_idx, i, 0])).astype(int)
             )
@@ -125,7 +125,7 @@ class NasMedSeg:
             for j in range(1, 6):
                 new_population[fly_idx, i, j] = constrain(
                     min_v=0,
-                    max_v=len(self._connections[j]) - 1,
+                    max_v=len(self._OPERATIONS[j]) - 1,
                     value=np.round(population[best_neighbour_i, i, j] + np.random.uniform() * (
                                 population[best_fly_i, i, j] - population[fly_idx, i, j])).astype(int)
                 )
@@ -180,7 +180,7 @@ class NasMedSeg:
                          skip_connection: tf.keras.layers.Layer | None):
         operation_type, *connections_combinations = block_params
         # Firstly extract operation type
-        operation = self._operations[operation_type]
+        operation = self._OPERATIONS[operation_type]
 
         # First four blocks form an encoder part
         if block_num <= 3:
@@ -209,7 +209,7 @@ class NasMedSeg:
         # Iterate over fly from position 1 to n to extract connections between nodes
         for curr_node_i, v_i in enumerate(connections_combinations):
             # Firstly get list of possible combinations of connections for specific node
-            possible_connections = self._connections[curr_node_i + 1]
+            possible_connections = self._CONNECTIONS[curr_node_i + 1]
 
             # Then get connection combination
             connection_combination = possible_connections[v_i]
@@ -245,7 +245,7 @@ class NasMedSeg:
 
         return block, skip_connection
 
-    def __map_fly_to_architecture(self, fly: np.ndarray, inputs: tf.keras.Input):
+    def __map_fly_to_architecture(self, fly: np.ndarray, inputs: tf.keras.Input) -> tf.keras.layers.Layer:
         """
         It decodes particular agent (fly) neural architecture represented by that fly
         """
@@ -282,12 +282,13 @@ class NasMedSeg:
         """It maps the fly to the architecture and the creates and trains model based on that architecture"""
 
         # Create model and compile it using adam optimiser and F1 loss function
-        architecture = self.__map_fly_to_architecture(fly, self._inputs)
+        inputs = tf.keras.layers.Input(self._input_shape)
+        architecture = self.__map_fly_to_architecture(fly, inputs)
 
-        model = keras.Model(inputs=self._inputs, outputs=architecture)
+        model = keras.Model(inputs=inputs, outputs=architecture)
 
         model.compile(
-            optimizer=self._OPTIMIZER,
+            optimizer=self._optimizer,
             loss=BinaryDualFocalLoss(),
             metrics=[dice_coef, jaccard_coef, 'accuracy']
         )
@@ -296,8 +297,8 @@ class NasMedSeg:
         model.fit(
             self._train_ds_reduced,
             validation_data=self._validation_ds_reduced,
-            epochs=self._EPOCHS,
-            batch_size=self._BATCH_SIZE
+            epochs=self._epochs,
+            batch_size=self._batch_size
         )
 
         # Evaluate the model using Dice coefficient. Use Dice Coefficient as a cost function
@@ -352,23 +353,24 @@ class NasMedSeg:
 
         return population[best_fly_i]
 
-    def __adjust_augmentation(self, best_fly):
+    def __adjust_augmentation(self, best_fly) -> tf.keras.layers.Layer:
         """It iteratively finds the best augmentation technique out of the existing list"""
         best_score = 0
         best_technique = None
 
-        for augmentation_technique in self._augmentation_techniques:
+        for augmentation_technique in self._AUGMENTATION_TECHNIQUES:
+            inputs = tf.keras.layers.Input(self._input_shape)
             if augmentation_technique is None:
-                augmented_inputs = self._inputs
+                augmented_inputs = inputs
             else:
-                augmented_inputs = augmentation_technique(self._inputs)
+                augmented_inputs = augmentation_technique(inputs)
 
             architecture = self.__map_fly_to_architecture(best_fly, augmented_inputs)
 
-            model = tf.keras.Model(inputs=self._inputs, outputs=architecture)
+            model = tf.keras.Model(inputs=inputs, outputs=architecture)
 
             model.compile(
-                optimizer=self._OPTIMIZER,
+                optimizer=self._optimizer,
                 loss=BinaryDualFocalLoss(),
                 metrics=[dice_coef, jaccard_coef, 'accuracy']
             )
@@ -376,8 +378,8 @@ class NasMedSeg:
             model.fit(
                 self._train_ds,
                 validation_data=self._validation_ds,
-                epochs=self._EPOCHS,
-                batch_size=self._BATCH_SIZE
+                epochs=self._epochs,
+                batch_size=self._batch_size
             )
 
             dice_coef_val = model.get_metrics_result()['dice_coef'].numpy()
@@ -386,14 +388,30 @@ class NasMedSeg:
 
         return best_technique
 
+    @property
+    def train_ds(self):
+        return self._train_ds
+
+    @property
+    def validation_ds(self):
+        return self._validation_ds
+
+    @property
+    def train_ds_reduced(self):
+        return self._train_ds_reduced
+
+    @property
+    def validation_ds_reduced(self):
+        return self._validation_ds_reduced
+
     def load(self, dataset_path: str, extension: str, depth: int) -> None:
         """It loads the data to the NAS object. Note that is usually take some time"""
         (train_ds, validation_ds), (train_ds_reduced, validation_ds_reduced) = load_data(
             dataset_path,
             extension,
             depth,
-            self._BATCH_SIZE,
-            self._REDUCED_BATCH_SIZE,
+            self._batch_size,
+            self._reduced_batch_size,
         )
 
         self._train_ds = train_ds
@@ -401,23 +419,27 @@ class NasMedSeg:
         self._train_ds_reduced = train_ds_reduced
         self._validation_ds_reduced = validation_ds_reduced
 
-    def search(self, pop_size: int, iter_num: int, delta: float = 0.001) -> tf.keras.Model:
+    def search(self, pop_size: int, iter_num: int, delta: float = 0.001) -> [tf.keras.Model, np.ndarray, tf.keras.layers.Layer]:
         """It searches for the best architecture and best augmentation method.
          Then, function returns the compiled model based on that architecture"""
 
+        # Get the best architecture represented by a fly
         best_fly = self.__dfo(pop_size, iter_num, delta)
 
+        # Get the best augmentation method
         best_augmentation = self.__adjust_augmentation(best_fly)
 
-        augmented_inputs = best_augmentation(self._inputs)
+        # Create a model based on the architecture and augmentation technique
+        inputs = tf.keras.layers.Input(self._input_shape)
 
+        augmented_inputs = best_augmentation(inputs)
         best_architecture = self.__map_fly_to_architecture(best_fly, augmented_inputs)
 
-        model = tf.keras.Model(inputs=self._inputs, outputs=best_architecture)
+        model = tf.keras.Model(inputs=inputs, outputs=best_architecture)
         model.compile(
-            optimizer=self._OPTIMIZER,
+            optimizer=self._optimizer,
             loss=BinaryDualFocalLoss(),
             metrics=[dice_coef, jaccard_coef, 'accuracy']
         )
 
-        return model
+        return model, best_fly, best_augmentation
